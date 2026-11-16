@@ -208,6 +208,15 @@
               <option value="onemap">OneMap (SG)</option>
             </select>
           </div>
+          <div id="map-radius-bar" class="radius-bar" style="margin-top:8px;">
+            <span class="muted" style="font-size:0.82rem;font-weight:600;">Radius:</span>
+            <button type="button" class="btn btn-sm radius-btn" data-radius="100">100m</button>
+            <button type="button" class="btn btn-sm radius-btn" data-radius="200">200m</button>
+            <button type="button" class="btn btn-sm radius-btn" data-radius="500">500m</button>
+            <button type="button" class="btn btn-sm radius-btn" data-radius="1000">1km</button>
+            <button type="button" id="btn-clear-radius" class="btn btn-sm" style="display:none;">Clear</button>
+          </div>
+          <div id="map-gps-status" class="muted" style="margin-top:6px;font-size:0.82rem;display:none;"></div>
         </div>
 
         <div id="map-panel">

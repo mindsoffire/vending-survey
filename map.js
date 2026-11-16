@@ -60,6 +60,7 @@ export class MainMapController {
     this.map = null;
     this.baseLayer = null;
     this.markersLayer = null;
+    this.radiusLayer = null;
     this.currentBasemap = 'osm';
   }
 
@@ -79,6 +80,7 @@ export class MainMapController {
 
     this.currentBasemap = basemap;
     this.baseLayer = createBaseLayer(basemap).addTo(this.map);
+    this.radiusLayer = L.layerGroup().addTo(this.map);
     this.markersLayer = L.layerGroup().addTo(this.map);
     return true;
   }
@@ -133,6 +135,7 @@ export class MainMapController {
           <div class="map-popup-title">${title}</div>
           <div class="map-popup-meta">${escapeHtml(m.serialLabel)} · ${status}</div>
           <div class="map-popup-meta">${building}${m.floor ? `, ${floor}` : ''}</div>
+          ${(m.tags && m.tags.length) ? `<div class="map-popup-meta">Tags: ${escapeHtml(m.tags.join(', '))}</div>` : ''}
           <button type="button" class="btn btn-sm btn-primary map-popup-btn" data-machine-id="${escapeHtml(m.id)}">Open record</button>
         </div>
       `;
@@ -161,6 +164,33 @@ export class MainMapController {
       this._hasFittedOnce = true;
       this.map.fitBounds(bounds, { padding: [32, 32], maxZoom: 16 });
     }
+  }
+
+  showUserRadius(lat, lng, radiusMetres) {
+    if (!this.map || !this.radiusLayer) return;
+    this.radiusLayer.clearLayers();
+
+    const circle = L.circle([lat, lng], {
+      radius: radiusMetres,
+      color: '#2563eb',
+      fillColor: '#60a5fa',
+      fillOpacity: 0.14,
+      weight: 2
+    }).addTo(this.radiusLayer);
+
+    const userIcon = L.divIcon({
+      className: 'user-pos-icon',
+      html: '<div class="user-pos-dot"></div>',
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
+    });
+    L.marker([lat, lng], { icon: userIcon, interactive: false }).addTo(this.radiusLayer);
+
+    this.map.fitBounds(circle.getBounds(), { padding: [20, 20] });
+  }
+
+  clearUserRadius() {
+    if (this.radiusLayer) this.radiusLayer.clearLayers();
   }
 }
 

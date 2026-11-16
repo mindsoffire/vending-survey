@@ -216,6 +216,7 @@ function bindEvents() {
   $('btn-view-map').addEventListener('click', () => {
     $('map-panel').style.display = 'block';
     $('list-panel').style.display = 'none';
+    $('map-radius-bar').style.display = 'flex';
     $('btn-view-map').classList.add('btn-primary');
     $('btn-view-list').classList.remove('btn-primary');
     state.mainMap.init(state.settings.basemap);
@@ -224,10 +225,25 @@ function bindEvents() {
   $('btn-view-list').addEventListener('click', () => {
     $('map-panel').style.display = 'none';
     $('list-panel').style.display = 'block';
+    $('map-radius-bar').style.display = 'none';
+    $('map-gps-status').style.display = 'none';
     $('btn-view-list').classList.add('btn-primary');
     $('btn-view-map').classList.remove('btn-primary');
     populateListFilters();
     renderListTable();
+  });
+
+  document.querySelectorAll('.radius-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const radiusM = Number(btn.dataset.radius);
+      triggerSingleShotRadius(radiusM, btn);
+    });
+  });
+  $('btn-clear-radius').addEventListener('click', () => {
+    state.mainMap.clearUserRadius();
+    document.querySelectorAll('.radius-btn').forEach((b) => b.classList.remove('active'));
+    $('btn-clear-radius').style.display = 'none';
+    $('map-gps-status').style.display = 'none';
   });
   $('basemap-select').addEventListener('change', async (e) => {
     state.settings = await saveAppSettings({ basemap: e.target.value });
@@ -1219,3 +1235,41 @@ async function handleImportZip(e) {
 }
 
 init();
+
+function triggerSingleShotRadius(radiusMetres, activeBtn) {
+  const statusEl = $('map-gps-status');
+  document.querySelectorAll('.radius-btn').forEach((b) => b.classList.remove('active'));
+  activeBtn.classList.add('active');
+
+  if (!navigator.geolocation) {
+    statusEl.textContent = 'Geolocation is not supported in this browser.';
+    statusEl.style.display = 'block';
+    return;
+  }
+
+  statusEl.textContent = 'Checking GPS once...';
+  statusEl.style.display = 'block';
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const { latitude, longitude, accuracy } = pos.coords;
+      state.mainMap.init(state.settings.basemap);
+      state.mainMap.showUserRadius(latitude, longitude, radiusMetres);
+      $('btn-clear-radius').style.display = 'inline-flex';
+      const label = radiusMetres >= 1000 ? `${radiusMetres / 1000} km` : `${radiusMetres} m`;
+      statusEl.textContent = `Showing ${label} radius around you (±${Math.round(accuracy)} m). GPS stopped.`;
+    },
+    (err) => {
+      let msg = 'Could not get location.';
+      if (err.code === err.PERMISSION_DENIED) {
+        msg = 'Location permission denied. Enable location in browser settings.';
+      } else if (err.code === err.POSITION_UNAVAILABLE) {
+        msg = 'Location unavailable. Check that phone GPS is turned on.';
+      } else if (err.code === err.TIMEOUT) {
+        msg = 'GPS timed out. Try tapping the radius button again outdoors.';
+      }
+      statusEl.textContent = msg;
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+  );
+}

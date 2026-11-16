@@ -502,3 +502,37 @@ html, body {
 .badge-ok { background: var(--pastel-mint); color: var(--primary); }
 .badge-warn { background: var(--pastel-warn); color: var(--warn-text); }
 .badge-err { background: var(--pastel-danger); color: #7f1d1d; }
+
+/* Map radius bar & single-shot user position dot */
+.radius-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.radius-btn {
+  min-height: 36px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+}
+
+.radius-btn.active {
+  background: var(--primary);
+  color: var(--primary-text);
+  border-color: var(--primary);
+}
+
+.user-pos-icon {
+  background: transparent;
+  border: none;
+}
+
+.user-pos-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 3px solid #ffffff;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.45);
+}
