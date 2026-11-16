@@ -154,20 +154,9 @@ async function refreshDataAndHome() {
     $('backup-warning').style.display = 'none';
   }
 
+  $('home-total-count').textContent = `${state.machines.length} machine(s) saved`;
   const auth = getAuthState();
   const isDev = auth.signedIn && auth.role === 'developer';
-  const countCard = $('home-count-card');
-  if (auth.signedIn) {
-    const mine = state.machines.filter((m) =>
-      m.contributorEmail ? m.contributorEmail === auth.email : isDev
-    );
-    $('home-total-count').textContent = isDev
-      ? `${mine.length} machine(s) saved`
-      : `${mine.length} machine(s) claimed`;
-    countCard.style.display = 'block';
-  } else {
-    countCard.style.display = 'none';
-  }
   const hasCommProfile = Boolean(state.profile?.ageRange && state.profile?.sex && state.profile?.acceptedTerms);
 
   const userPill = $('user-pill');
@@ -202,11 +191,12 @@ function bindEvents() {
     btn.addEventListener('click', () => {
       const target = btn.dataset.nav;
       showScreen(target);
-      if (target !== 'map') stopMapLiveGps();
       if (target === 'map') {
         state.mainMap.init(state.settings.basemap);
         renderMapWithFilters();
         renderListTable();
+      } else {
+        stopMapLiveGps();
       } else if (target === 'settings') {
         renderSettingsScreen();
       } else if (target === 'home') {
@@ -723,9 +713,7 @@ async function openReviewScreen() {
   showScreen('review');
 
   const isDev = getAuthState().role === 'developer';
-  $('rev-nudge-card').style.display = isDev ? 'block' : 'none';
-  if (isDev) {
-    if (!state.reviewNudgeMap) {
+  if (!state.reviewNudgeMap) {
     state.reviewNudgeMap = new NudgeMapController('nudge-map', {
       onNudge: async (lat, lng, clamped) => {
         if (!state.activeCapture) return;
@@ -746,10 +734,9 @@ async function openReviewScreen() {
     confirmedPosition: m.confirmedPosition,
     basemap: state.settings.basemap,
     editable: true,
-      isDeveloper: isDev,
-      otherMachines: state.machines.filter((x) => x.id !== m.id)
-    });
-  }
+    isDeveloper: isDev,
+    otherMachines: state.machines.filter((x) => x.id !== m.id)
+  });
 }
 
 function renderReviewMachineTags() {
@@ -1061,49 +1048,26 @@ async function openDetailScreen(id) {
   badge.textContent = m.backupState === 'verified' ? 'Backed up & verified' : m.backupState === 'failed' ? `Failed: ${m.backupError || 'error'}` : 'Not backed up';
 
   const isDevRole = auth.role === 'developer';
-  const dev = Boolean(isDevRole);
-  const isLocked = Boolean(m.positionLocked);
+  const dev = Boolean(state.settings.developerMode || isDevRole);
+  const allowNudge = dev || isOwner;
   $('det-dev-notice').style.display = dev ? 'block' : 'none';
-  $('det-nudge-card').style.display = dev ? 'block' : 'none';
-  $('det-flag-card').style.display = (!dev && isOwner) ? 'block' : 'none';
+  $('det-nudge-card').style.display = allowNudge ? 'block' : 'none';
 
-  if (!dev && isOwner) {
-    $('det-flag-status').textContent = m.positionFlagged ? 'Flagged for Developer check.' : '';
-    $('btn-det-flag-pos').onclick = async () => {
-      m.positionFlagged = true;
-      m.backupState = 'not_backed_up';
-      await saveMachine(m);
-      $('det-flag-status').textContent = 'Flagged for Developer check.';
-    };
-  }
-
-  if (dev) {
-    $('det-nudge-label').textContent = isLocked
-      ? 'Position confirmed & locked (read-only)'
-      : 'Nudge confirmed pin (Developer — other machines shown as reference dots)';
-    $('btn-det-lock-pos').style.display = isLocked ? 'none' : 'inline-flex';
-    $('btn-det-lock-pos').onclick = async () => {
-      const current = await getMachine(state.detailMachineId);
-      if (!current) return;
-      current.positionLocked = true;
-      current.backupState = 'not_backed_up';
-      await saveMachine(current);
-      await openDetailScreen(current.id);
-    };
-
+  if (allowNudge) {
     if (!state.detailNudgeMap) {
       state.detailNudgeMap = new NudgeMapController('det-nudge-map', {
-        onNudge: async (lat, lng) => {
+        onNudge: async (lat, lng, clamped) => {
           const current = await getMachine(state.detailMachineId);
-          if (!current || current.positionLocked) return;
+          if (!current) return;
           current.confirmedPosition = {
             lat,
             lng,
-            method: 'nudged by developer',
+            method: getAuthState().role === 'developer' ? 'nudged in developer mode' : 'nudged by owner (8m max)',
             timestamp: new Date().toISOString()
           };
           current.backupState = 'not_backed_up';
           await saveMachine(current);
+          if (clamped) alert('Community nudges are limited to 8 m from the measured GPS fix.');
           await openDetailScreen(current.id);
         }
       });
@@ -1112,8 +1076,8 @@ async function openDetailScreen(id) {
       measuredGps: m.measuredGps,
       confirmedPosition: m.confirmedPosition,
       basemap: state.settings.basemap,
-      editable: !isLocked,
-      isDeveloper: true,
+      editable: true,
+      isDeveloper: isDevRole,
       otherMachines: state.machines.filter((x) => x.id !== m.id)
     });
   }
