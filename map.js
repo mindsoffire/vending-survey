@@ -1,0 +1,268 @@
+import { APP_CONFIG } from './config.js';
+
+export function haversineMetres(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function getDisplayCoords(machine) {
+  if (machine?.confirmedPosition && Number.isFinite(machine.confirmedPosition.lat) && Number.isFinite(machine.confirmedPosition.lng)) {
+    return {
+      lat: machine.confirmedPosition.lat,
+      lng: machine.confirmedPosition.lng,
+      isConfirmed: true
+    };
+  }
+  if (machine?.measuredGps && Number.isFinite(machine.measuredGps.lat) && Number.isFinite(machine.measuredGps.lng)) {
+    return {
+      lat: machine.measuredGps.lat,
+      lng: machine.measuredGps.lng,
+      isConfirmed: false
+    };
+  }
+  return null;
+}
+
+function createBaseLayer(basemap) {
+  if (basemap === 'onemap') {
+    return L.tileLayer('https://www.onemap.gov.sg/maps/tiles/Default/{z}/{x}/{y}.png', {
+      detectRetina: true,
+      maxZoom: 19,
+      minZoom: 11,
+      attribution:
+        '<img src="https://www.onemap.gov.sg/web-assets/images/logo/om_logo.png" style="height:16px;width:16px;vertical-align:middle;" alt="OneMap"/> <a href="https://www.onemap.gov.sg/" target="_blank" rel="noopener noreferrer">OneMap</a> &copy; contributors | <a href="https://www.sla.gov.sg/" target="_blank" rel="noopener noreferrer">Singapore Land Authority</a>'
+    });
+  }
+  return L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>'
+  });
+}
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+export class MainMapController {
+  constructor(containerId, { onSelectMachine }) {
+    this.containerId = containerId;
+    this.onSelectMachine = onSelectMachine;
+    this.map = null;
+    this.baseLayer = null;
+    this.markersLayer = null;
+    this.currentBasemap = 'osm';
+  }
+
+  init(basemap = 'osm') {
+    if (typeof window.L === 'undefined') return false;
+    if (this.map) {
+      this.setBasemap(basemap);
+      this.map.invalidateSize();
+      return true;
+    }
+
+    this.map = L.map(this.containerId, {
+      center: APP_CONFIG.mapCenter,
+      zoom: APP_CONFIG.mapDefaultZoom,
+      zoomControl: true
+    });
+
+    this.currentBasemap = basemap;
+    this.baseLayer = createBaseLayer(basemap).addTo(this.map);
+    this.markersLayer = L.layerGroup().addTo(this.map);
+    return true;
+  }
+
+  setBasemap(basemap) {
+    if (!this.map || this.currentBasemap === basemap) return;
+    if (this.baseLayer) this.map.removeLayer(this.baseLayer);
+    this.currentBasemap = basemap;
+    this.baseLayer = createBaseLayer(basemap).addTo(this.map);
+  }
+
+  renderMachines(machines) {
+    if (!this.map || !this.markersLayer) return;
+    this.markersLayer.clearLayers();
+
+    const bounds = [];
+    for (const m of machines) {
+      const coords = getDisplayCoords(m);
+      if (!coords) continue;
+      bounds.push([coords.lat, coords.lng]);
+
+      // Small solid black circle by default; subtle ring for Broken/Gone
+      let color = '#111827';
+      let fillColor = '#111827';
+      let fillOpacity = 0.95;
+      if (m.status === 'Broken') {
+        color = '#b91c1c';
+        fillColor = '#111827';
+      } else if (m.status === 'Gone') {
+        color = '#6b7280';
+        fillColor = '#4b5563';
+        fillOpacity = 0.7;
+      }
+
+      const marker = L.circleMarker([coords.lat, coords.lng], {
+        radius: 7,
+        color,
+        weight: m.status === 'Broken' ? 2.5 : 1.5,
+        fillColor,
+        fillOpacity
+      });
+
+      const thumb = m.photos?.[0]?.thumbDataUrl || '';
+      const title = escapeHtml(m.name || m.serialLabel || 'Unnamed machine');
+      const building = escapeHtml(m.building || '—');
+      const floor = escapeHtml(m.floor || '—');
+      const status = escapeHtml(m.status || 'Unknown / Not checked');
+
+      const popupHtml = `
+        <div class="map-popup">
+          ${thumb ? `<img src="${thumb}" alt="${title}" class="map-popup-thumb" />` : ''}
+          <div class="map-popup-title">${title}</div>
+          <div class="map-popup-meta">${escapeHtml(m.serialLabel)} · ${status}</div>
+          <div class="map-popup-meta">${building}${m.floor ? `, ${floor}` : ''}</div>
+          <button type="button" class="btn btn-sm btn-primary map-popup-btn" data-machine-id="${escapeHtml(m.id)}">Open record</button>
+        </div>
+      `;
+
+      marker.bindPopup(popupHtml);
+
+      // Desktop hover preview only (does not interfere with mobile tap)
+      if (window.matchMedia('(hover: hover)').matches) {
+        marker.bindTooltip(`${title} (${status})`, { direction: 'top', offset: [0, -6] });
+      }
+
+      marker.on('popupopen', (e) => {
+        const el = e.popup.getElement();
+        const btn = el?.querySelector('.map-popup-btn');
+        if (btn) {
+          btn.addEventListener('click', () => {
+            this.onSelectMachine(m.id);
+          });
+        }
+      });
+
+      marker.addTo(this.markersLayer);
+    }
+
+    if (bounds.length > 0 && !this._hasFittedOnce) {
+      this._hasFittedOnce = true;
+      this.map.fitBounds(bounds, { padding: [32, 32], maxZoom: 16 });
+    }
+  }
+}
+
+export class NudgeMapController {
+  constructor(containerId, { onNudge }) {
+    this.containerId = containerId;
+    this.onNudge = onNudge;
+    this.map = null;
+    this.accuracyCircle = null;
+    this.measuredMarker = null;
+    this.confirmedMarker = null;
+  }
+
+  destroy() {
+    if (this.map) {
+      this.map.remove();
+      this.map = null;
+    }
+    this.accuracyCircle = null;
+    this.measuredMarker = null;
+    this.confirmedMarker = null;
+  }
+
+  render({ measuredGps, confirmedPosition, basemap = 'osm', editable = true }) {
+    if (typeof window.L === 'undefined') return;
+    const center = confirmedPosition
+      ? [confirmedPosition.lat, confirmedPosition.lng]
+      : measuredGps
+      ? [measuredGps.lat, measuredGps.lng]
+      : APP_CONFIG.mapCenter;
+
+    if (!this.map) {
+      this.map = L.map(this.containerId, {
+        center,
+        zoom: measuredGps || confirmedPosition ? 18 : 12,
+        zoomControl: true
+      });
+      createBaseLayer(basemap).addTo(this.map);
+
+      if (editable) {
+        this.map.on('click', (e) => {
+          this.placeConfirmedPin(e.latlng.lat, e.latlng.lng);
+          this.onNudge(e.latlng.lat, e.latlng.lng);
+        });
+      }
+    } else {
+      this.map.setView(center, measuredGps || confirmedPosition ? 18 : 12);
+    }
+
+    if (this.accuracyCircle) this.map.removeLayer(this.accuracyCircle);
+    if (this.measuredMarker) this.map.removeLayer(this.measuredMarker);
+    if (this.confirmedMarker) this.map.removeLayer(this.confirmedMarker);
+
+    if (measuredGps && Number.isFinite(measuredGps.lat)) {
+      this.accuracyCircle = L.circle([measuredGps.lat, measuredGps.lng], {
+        radius: Math.max(3, measuredGps.accuracyM || 15),
+        color: '#457b9d',
+        fillColor: '#a8dadc',
+        fillOpacity: 0.25,
+        weight: 1.5,
+        dashArray: '4 4'
+      }).addTo(this.map);
+
+      this.measuredMarker = L.circleMarker([measuredGps.lat, measuredGps.lng], {
+        radius: 5,
+        color: '#1d3557',
+        fillColor: '#457b9d',
+        fillOpacity: 0.9,
+        weight: 1.5
+      }).addTo(this.map);
+    }
+
+    const pinLat = confirmedPosition?.lat ?? measuredGps?.lat;
+    const pinLng = confirmedPosition?.lng ?? measuredGps?.lng;
+    if (Number.isFinite(pinLat) && Number.isFinite(pinLng)) {
+      this.placeConfirmedPin(pinLat, pinLng, editable);
+    }
+
+    setTimeout(() => this.map?.invalidateSize(), 100);
+  }
+
+  placeConfirmedPin(lat, lng, editable = true) {
+    if (!this.map) return;
+    if (this.confirmedMarker) this.map.removeLayer(this.confirmedMarker);
+
+    const icon = L.divIcon({
+      className: 'nudge-pin-icon',
+      html: '<div class="nudge-pin-dot"></div>',
+      iconSize: [22, 22],
+      iconAnchor: [11, 11]
+    });
+
+    this.confirmedMarker = L.marker([lat, lng], {
+      icon,
+      draggable: editable
+    }).addTo(this.map);
+
+    if (editable) {
+      this.confirmedMarker.on('dragend', () => {
+        const pos = this.confirmedMarker.getLatLng();
+        this.onNudge(pos.lat, pos.lng);
+      });
+    }
+  }
+}

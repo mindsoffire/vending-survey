@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#2d6a4f" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <title>Vending Survey</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="" defer></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <h1 class="topbar-title" id="app-title">Vending Survey</h1>
+      <div class="row-gap" style="align-items:center;">
+        <span id="net-pill" class="status-pill">Online</span>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <!-- HOME SCREEN -->
+      <section id="screen-home" class="screen active">
+        <div id="install-banner" class="banner banner-info" style="display:none;">
+          <div class="row-gap" style="justify-content:space-between;align-items:center;">
+            <span id="install-text">Install this app on your home screen for offline field use.</span>
+            <button type="button" id="btn-install-app" class="btn btn-sm btn-primary">Install</button>
+          </div>
+        </div>
+
+        <div id="draft-banner" class="banner banner-info" style="display:none;">
+          <div class="col-stack">
+            <strong>Unfinished capture found</strong>
+            <span id="draft-summary" class="muted"></span>
+            <div class="row-gap">
+              <button type="button" id="btn-resume-draft" class="btn btn-sm btn-primary">Resume capture</button>
+              <button type="button" id="btn-discard-draft" class="btn btn-sm btn-danger">Discard draft</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="backup-warning" class="banner banner-warn" style="display:none;">
+          <div class="col-stack">
+            <strong id="backup-warning-text">0 records not yet backed up to Google Drive.</strong>
+            <div class="row-gap">
+              <button type="button" id="btn-home-sync" class="btn btn-sm btn-primary">Back up now</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <button type="button" id="btn-start-capture" class="btn btn-primary btn-hero">
+            Start capture
+          </button>
+          <p class="muted" style="margin:10px 0 0;">
+            Survey one machine at a time from outside only. Photos and drafts save locally as you go.
+          </p>
+        </div>
+
+        <div class="card card-soft">
+          <div class="row-gap" style="justify-content:space-between;align-items:center;">
+            <div>
+              <strong id="home-total-count">0 machines</strong>
+              <div class="muted" id="home-drive-status">Drive: Not signed in</div>
+            </div>
+            <button type="button" id="btn-home-signin" class="btn btn-sm">Sign in to Google</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- CAPTURE SCREEN -->
+      <section id="screen-capture" class="screen">
+        <div class="card">
+          <div class="row-gap" style="justify-content:space-between;align-items:center;">
+            <strong id="cap-serial">New capture</strong>
+            <span id="cap-gps-badge" class="badge">GPS: Starting...</span>
+          </div>
+          <p id="cap-gps-detail" class="muted" style="margin:6px 0 0;">Requesting high-accuracy location for this machine...</p>
+          <div id="cap-nearby-box" class="banner banner-info" style="display:none;margin-top:10px;margin-bottom:0;"></div>
+        </div>
+
+        <div class="card">
+          <label class="btn btn-primary btn-block" for="camera-input">
+            Take photo (outside only)
+          </label>
+          <input id="camera-input" type="file" accept="image/*" capture="environment" style="display:none;" />
+          <p class="muted" style="margin:8px 0 0;">
+            Take photos in any order. You can skip roles you do not need or take multiple photos with the same role.
+          </p>
+        </div>
+
+        <!-- Pending photo labeling card (shown right after taking a photo) -->
+        <div id="cap-label-card" class="card" style="display:none;">
+          <strong>Label this photo</strong>
+          <div style="margin:10px 0;">
+            <img id="cap-preview-img" alt="Captured preview" style="width:100%;max-height:220px;object-fit:contain;border-radius:8px;background:#eef4f0;" />
+          </div>
+          <label class="field-label">Photo role</label>
+          <div id="cap-role-buttons" class="role-grid"></div>
+
+          <div style="margin-top:14px;">
+            <label class="field-label">Product tags (optional)</label>
+            <div id="cap-tag-chips" class="chip-wrap"></div>
+            <div class="row-gap" style="margin-top:10px;">
+              <input id="cap-custom-tag" class="input" type="text" spellcheck="true" placeholder="Other tag (type or keyboard mic)" style="flex:1;" />
+              <button type="button" id="btn-add-custom-tag" class="btn btn-soft">Add</button>
+            </div>
+            <div id="cap-spell-suggestion" class="banner banner-info" style="display:none;margin-top:8px;"></div>
+          </div>
+
+          <div class="row-gap" style="margin-top:14px;">
+            <button type="button" id="btn-save-photo" class="btn btn-primary" style="flex:1;">Save photo to capture</button>
+            <button type="button" id="btn-discard-photo" class="btn btn-danger">Discard photo</button>
+          </div>
+        </div>
+
+        <div class="card card-soft">
+          <div class="row-gap" style="justify-content:space-between;align-items:center;">
+            <strong id="cap-photo-count">0 photos in this capture</strong>
+            <button type="button" id="btn-go-review" class="btn btn-primary">Review &amp; Finish</button>
+          </div>
+          <div class="row-gap" style="margin-top:10px;">
+            <button type="button" id="btn-cancel-capture" class="btn btn-danger btn-sm">Cancel capture</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- REVIEW SCREEN -->
+      <section id="screen-review" class="screen">
+        <div class="card">
+          <div class="row-gap" style="justify-content:space-between;align-items:center;">
+            <strong id="rev-title">Review capture</strong>
+            <button type="button" id="btn-rev-back-capture" class="btn btn-sm">+ Add photo</button>
+          </div>
+          <p id="rev-gps-summary" class="muted" style="margin:6px 0 0;"></p>
+        </div>
+
+        <div class="card">
+          <label class="field-label">Pin position (optional nudge)</label>
+          <p class="muted" style="margin:0 0 8px;">
+            Blue dot is the measured GPS fix. Tap the map or drag the black pin to nudge it to the machine's true position.
+          </p>
+          <div id="nudge-map" class="nudge-map-box"></div>
+          <p id="rev-pin-status" class="muted" style="margin:6px 0 0;"></p>
+        </div>
+
+        <div class="card">
+          <label class="field-label">Photos (<span id="rev-photo-count">0</span>)</label>
+          <div id="rev-photo-list" class="photo-grid"></div>
+        </div>
+
+        <div class="card col-stack">
+          <strong>Machine details (all optional)</strong>
+          <div>
+            <label class="field-label" for="rev-name">Machine name or brand</label>
+            <input id="rev-name" class="input" type="text" list="known-machine-names" placeholder="e.g. iJooz, Pokka, Chef-in-Box" />
+            <datalist id="known-machine-names"></datalist>
+          </div>
+          <div>
+            <label class="field-label" for="rev-building">Building name</label>
+            <input id="rev-building" class="input" type="text" placeholder="e.g. Tampines Hub, Blk 123" />
+          </div>
+          <div>
+            <label class="field-label" for="rev-floor">Floor or level</label>
+            <input id="rev-floor" class="input" type="text" placeholder="e.g. L1, B1, Void deck" />
+          </div>
+          <div>
+            <label class="field-label" for="rev-status">Status (only set if you checked)</label>
+            <select id="rev-status" class="select"></select>
+          </div>
+          <div>
+            <label class="field-label" for="rev-colocated">Co-located machines note</label>
+            <input id="rev-colocated" class="input" type="text" placeholder="e.g. Bank of 3 machines side by side" />
+          </div>
+          <div>
+            <label class="field-label" for="rev-note">Free-text note</label>
+            <textarea id="rev-note" class="textarea" placeholder="Any extra observation from outside"></textarea>
+          </div>
+          <div>
+            <label class="field-label">Machine product tags</label>
+            <div id="rev-machine-tags" class="chip-wrap"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="row-gap">
+            <button type="button" id="btn-done-capture" class="btn btn-primary" style="flex:1;">Done (Save &amp; Queue Backup)</button>
+            <button type="button" id="btn-rev-cancel" class="btn btn-danger">Cancel</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- MAP & LIST SCREEN -->
+      <section id="screen-map" class="screen">
+        <div class="card" style="padding:10px;">
+          <div class="row-gap" style="justify-content:space-between;align-items:center;">
+            <div class="row-gap">
+              <button type="button" id="btn-view-map" class="btn btn-sm btn-primary">Map</button>
+              <button type="button" id="btn-view-list" class="btn btn-sm">List</button>
+            </div>
+            <select id="basemap-select" class="select" style="width:auto;min-height:38px;padding:4px 10px;">
+              <option value="osm">OpenStreetMap</option>
+              <option value="onemap">OneMap (SG)</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="map-panel">
+          <div id="main-map" class="map-box"></div>
+        </div>
+
+        <div id="list-panel" style="display:none;">
+          <div class="card">
+            <div class="row-gap">
+              <select id="filter-status" class="select" style="flex:1;min-width:140px;">
+                <option value="">All statuses</option>
+              </select>
+              <select id="filter-tag" class="select" style="flex:1;min-width:140px;">
+                <option value="">All tags</option>
+              </select>
+            </div>
+          </div>
+          <div class="card table-wrap" style="padding:0;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th data-sort="serialLabel">Serial</th>
+                  <th data-sort="name">Name</th>
+                  <th data-sort="status">Status</th>
+                  <th data-sort="backupState">Backup</th>
+                </tr>
+              </thead>
+              <tbody id="machine-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- DETAIL / EDIT SCREEN -->
+      <section id="screen-detail" class="screen">
+        <div class="card">
+          <div class="row-gap" style="justify-content:space-between;align-items:center;">
+            <button type="button" id="btn-detail-back" class="btn btn-sm">&larr; Back</button>
+            <span id="det-backup-badge" class="badge">Not backed up</span>
+          </div>
+          <h2 id="det-title" style="margin:10px 0 4px;font-size:1.2rem;"></h2>
+          <p id="det-meta" class="muted" style="margin:0;"></p>
+          <div id="det-backup-actions" class="row-gap" style="margin-top:10px;">
+            <button type="button" id="btn-det-retry" class="btn btn-sm btn-primary">Back up this record</button>
+          </div>
+        </div>
+
+        <div id="det-dev-notice" class="banner banner-info" style="display:none;">
+          Developer mode is ON (UI convenience only, not security). Edits will mark this record Not backed up until re-synced.
+        </div>
+
+        <div id="det-nudge-card" class="card" style="display:none;">
+          <label class="field-label">Nudge confirmed pin (Developer mode)</label>
+          <div id="det-nudge-map" class="nudge-map-box"></div>
+        </div>
+
+        <div id="det-fields-card" class="card col-stack"></div>
+
+        <div class="card">
+          <label class="field-label">Photos</label>
+          <div id="det-photo-list" class="photo-grid"></div>
+        </div>
+      </section>
+
+      <!-- SETTINGS SCREEN -->
+      <section id="screen-settings" class="screen">
+        <div class="card col-stack">
+          <strong>Google Drive Backup (OAuth)</strong>
+          <div>
+            <label class="field-label" for="set-client-id">Google OAuth Client ID</label>
+            <input id="set-client-id" class="input" type="text" placeholder="1234567890-abc....apps.googleusercontent.com" />
+          </div>
+          <div class="row-gap">
+            <button type="button" id="btn-save-client-id" class="btn btn-sm">Save Client ID</button>
+            <button type="button" id="btn-drive-signin" class="btn btn-sm btn-primary">Sign in to Google</button>
+            <button type="button" id="btn-drive-signout" class="btn btn-sm">Sign out</button>
+          </div>
+          <p id="set-drive-status" class="muted" style="margin:0;"></p>
+          <div class="row-gap">
+            <button type="button" id="btn-sync-all" class="btn btn-primary btn-sm">Sync pending records</button>
+            <button type="button" id="btn-restore-drive" class="btn btn-sm">Restore from Drive</button>
+          </div>
+        </div>
+
+        <div class="card col-stack">
+          <strong>Photo Compression &amp; Legibility Test</strong>
+          <div class="row-gap">
+            <div style="flex:1;">
+              <label class="field-label" for="set-max-side">Longest side (px)</label>
+              <input id="set-max-side" class="input" type="number" min="600" max="4000" step="100" />
+            </div>
+            <div style="flex:1;">
+              <label class="field-label" for="set-quality">Quality (0.4 – 0.95)</label>
+              <input id="set-quality" class="input" type="number" min="0.4" max="0.95" step="0.02" />
+            </div>
+          </div>
+          <div>
+            <label class="field-label" for="set-format">Format</label>
+            <select id="set-format" class="select">
+              <option value="image/jpeg">JPEG</option>
+              <option value="image/webp">WebP</option>
+            </select>
+          </div>
+          <button type="button" id="btn-save-photo-settings" class="btn btn-sm btn-primary">Save photo settings</button>
+
+          <hr style="border:none;border-top:1px solid var(--border);margin:4px 0;" />
+          <label class="btn btn-soft btn-sm" for="legibility-test-input">Run legibility test on a shelf/price/phone photo</label>
+          <input id="legibility-test-input" type="file" accept="image/*" capture="environment" style="display:none;" />
+          <div id="legibility-test-result" style="display:none;"></div>
+        </div>
+
+        <div class="card col-stack">
+          <strong>Storage &amp; Working Set</strong>
+          <p id="set-storage-info" class="muted" style="margin:0;">Checking storage...</p>
+          <div class="row-gap">
+            <button type="button" id="btn-prune-blobs" class="btn btn-sm">Free space (keep thumbnails for older verified)</button>
+          </div>
+        </div>
+
+        <div class="card col-stack">
+          <strong>Export &amp; Restore (ZIP)</strong>
+          <div class="row-gap">
+            <button type="button" id="btn-export-zip" class="btn btn-sm btn-primary">Export all (ZIP)</button>
+            <label class="btn btn-sm" for="import-zip-input">Import / Restore ZIP</label>
+            <input id="import-zip-input" type="file" accept=".zip,application/zip" style="display:none;" />
+          </div>
+        </div>
+
+        <div class="card col-stack">
+          <strong>Developer Mode</strong>
+          <label class="row-gap" style="align-items:center;cursor:pointer;">
+            <input id="set-dev-mode" type="checkbox" style="width:20px;height:20px;" />
+            <span>Allow editing saved records and nudging pins after Done</span>
+          </label>
+          <p class="muted" style="margin:0;">
+            Note: This toggle is a UI convenience only, not security. Multi-user enforcement requires server-side identity checks in a future version.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <!-- BOTTOM NAVIGATION -->
+    <nav class="bottom-nav" aria-label="Main navigation">
+      <button type="button" class="nav-btn active" data-nav="home">Home</button>
+      <button type="button" class="nav-btn" data-nav="map">Map</button>
+      <button type="button" class="nav-btn" data-nav="settings">Settings</button>
+    </nav>
+  </div>
+
+  <!-- CROP MODAL -->
+  <div id="crop-modal" class="modal-backdrop" role="dialog" aria-modal="true">
+    <div class="modal-panel col-stack">
+      <strong>Manual Crop</strong>
+      <p class="muted" style="margin:0;">Drag inside the image to draw a crop box, then tap Apply crop.</p>
+      <div class="crop-stage">
+        <canvas id="crop-canvas"></canvas>
+      </div>
+      <div class="row-gap">
+        <button type="button" id="btn-apply-crop" class="btn btn-primary" style="flex:1;">Apply crop</button>
+        <button type="button" id="btn-cancel-crop" class="btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RETAKE HIDDEN INPUT -->
+  <input id="retake-input" type="file" accept="image/*" capture="environment" style="display:none;" />
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
