@@ -153,7 +153,16 @@ async function refreshDataAndHome() {
   $('home-total-count').textContent = `${state.machines.length} machine(s) saved`;
   const auth = getAuthState();
   const isDev = auth.signedIn && auth.role === 'developer';
-  const hasCommProfile = Boolean(state.profile?.ageRange && state.profile?.sex);
+  const hasCommProfile = Boolean(state.profile?.ageRange && state.profile?.sex && state.profile?.acceptedTerms);
+
+  const userPill = $('user-pill');
+  if (auth.signedIn && auth.email) {
+    const shortName = auth.email.split('@')[0];
+    userPill.textContent = isDev ? `${shortName} (Developer)` : auth.email;
+    userPill.style.display = 'inline-block';
+  } else {
+    userPill.style.display = 'none';
+  }
 
   $('home-signin-card').style.display = auth.signedIn ? 'none' : 'block';
   $('community-profile-card').style.display = (auth.signedIn && !isDev && !hasCommProfile) ? 'block' : 'none';
@@ -300,11 +309,16 @@ function bindEvents() {
   $('btn-save-profile').addEventListener('click', async () => {
     const ageRange = $('prof-age').value;
     const sex = $('prof-sex').value;
+    const acceptedTerms = $('prof-accept-terms').checked;
     if (!ageRange || !sex) {
       alert('Please select both Age range and Sex.');
       return;
     }
-    state.profile = { ageRange, sex };
+    if (!acceptedTerms) {
+      alert('Please tick the Terms & Privacy Notice box to continue.');
+      return;
+    }
+    state.profile = { ageRange, sex, acceptedTerms: true, acceptedAt: new Date().toISOString() };
     await setSetting('contributorProfile', state.profile);
     await refreshDataAndHome();
   });

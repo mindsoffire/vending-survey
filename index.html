@@ -18,7 +18,8 @@
   <div class="app-shell">
     <header class="topbar">
       <h1 class="topbar-title" id="app-title">Vending Survey</h1>
-      <div class="row-gap" style="align-items:center;">
+      <div class="row-gap" style="align-items:center;justify-content:flex-end;">
+        <span id="user-pill" class="user-pill" style="display:none;"></span>
         <span id="net-pill" class="status-pill">Online</span>
       </div>
     </header>
@@ -72,6 +73,10 @@
               <label class="field-label" for="prof-sex">Sex</label>
               <select id="prof-sex" class="select"></select>
             </div>
+            <label class="row-gap" style="align-items:flex-start;gap:8px;cursor:pointer;font-size:0.86rem;">
+              <input id="prof-accept-terms" type="checkbox" style="width:20px;height:20px;margin-top:2px;" />
+              <span>I accept the Terms &amp; Privacy Notice: my Gmail, age range, sex, and captured machine photos/locations are stored in my Google Drive and used for Vending Survey.</span>
+            </label>
             <button type="button" id="btn-save-profile" class="btn btn-primary btn-sm">Save profile</button>
           </div>
         </div>
