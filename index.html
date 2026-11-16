@@ -90,7 +90,7 @@
           </p>
         </div>
 
-        <div class="card card-soft">
+        <div id="home-count-card" class="card card-soft" style="display:none;">
           <div>
             <strong id="home-total-count">0 machines</strong>
             <div class="muted" id="home-drive-status">Drive: Not signed in</div>
@@ -165,8 +165,8 @@
           <p id="rev-gps-summary" class="muted" style="margin:6px 0 0;"></p>
         </div>
 
-        <div class="card">
-          <label class="field-label">Pin position (optional nudge)</label>
+        <div id="rev-nudge-card" class="card">
+          <label class="field-label">Pin position (Developer nudge)</label>
           <p class="muted" style="margin:0 0 8px;">
             Blue dot is the measured GPS fix. Tap the map or drag the black pin to nudge it to the machine's true position.
           </p>
@@ -298,8 +298,15 @@
         </div>
 
         <div id="det-nudge-card" class="card" style="display:none;">
-          <label class="field-label">Nudge confirmed pin (Developer mode)</label>
+          <label class="field-label" id="det-nudge-label">Nudge confirmed pin (Developer)</label>
           <div id="det-nudge-map" class="nudge-map-box"></div>
+          <div class="row-gap" style="margin-top:10px;">
+            <button type="button" id="btn-det-lock-pos" class="btn btn-sm btn-primary">Confirm &amp; Lock Position</button>
+          </div>
+        </div>
+        <div id="det-flag-card" class="card" style="display:none;">
+          <button type="button" id="btn-det-flag-pos" class="btn btn-sm btn-soft">Flag position for Developer check</button>
+          <span id="det-flag-status" class="muted" style="margin-left:8px;"></span>
         </div>
 
         <div id="det-fields-card" class="card col-stack"></div>
