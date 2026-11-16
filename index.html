@@ -53,22 +53,42 @@
           </div>
         </div>
 
+        <div id="home-signin-card" class="card card-soft">
+          <div class="col-stack">
+            <strong>Sign in to start capturing</strong>
+            <span class="muted">Sign in with your Google account to capture machines and back them up to your Drive. Consumers can use the Map tab without signing in.</span>
+            <button type="button" id="btn-home-signin" class="btn btn-primary">Sign in to Google</button>
+          </div>
+        </div>
+
+        <div id="community-profile-card" class="card" style="display:none;">
+          <div class="col-stack">
+            <strong>Community Profile (18+ required to capture)</strong>
+            <div>
+              <label class="field-label" for="prof-age">Age range</label>
+              <select id="prof-age" class="select"></select>
+            </div>
+            <div>
+              <label class="field-label" for="prof-sex">Sex</label>
+              <select id="prof-sex" class="select"></select>
+            </div>
+            <button type="button" id="btn-save-profile" class="btn btn-primary btn-sm">Save profile</button>
+          </div>
+        </div>
+
         <div class="card">
-          <button type="button" id="btn-start-capture" class="btn btn-primary btn-hero">
+          <button type="button" id="btn-start-capture" class="btn btn-primary btn-hero" disabled>
             Start capture
           </button>
-          <p class="muted" style="margin:10px 0 0;">
-            Survey one machine at a time from outside only. Photos and drafts save locally as you go.
+          <p id="home-capture-hint" class="muted" style="margin:10px 0 0;">
+            Sign in with Google above to unlock capture.
           </p>
         </div>
 
         <div class="card card-soft">
-          <div class="row-gap" style="justify-content:space-between;align-items:center;">
-            <div>
-              <strong id="home-total-count">0 machines</strong>
-              <div class="muted" id="home-drive-status">Drive: Not signed in</div>
-            </div>
-            <button type="button" id="btn-home-signin" class="btn btn-sm">Sign in to Google</button>
+          <div>
+            <strong id="home-total-count">0 machines</strong>
+            <div class="muted" id="home-drive-status">Drive: Not signed in</div>
           </div>
         </div>
       </section>
@@ -284,17 +304,12 @@
       <!-- SETTINGS SCREEN -->
       <section id="screen-settings" class="screen">
         <div class="card col-stack">
-          <strong>Google Drive Backup (OAuth)</strong>
-          <div>
-            <label class="field-label" for="set-client-id">Google OAuth Client ID</label>
-            <input id="set-client-id" class="input" type="text" placeholder="1234567890-abc....apps.googleusercontent.com" />
-          </div>
+          <strong>Account &amp; Google Drive Backup</strong>
           <div class="row-gap">
-            <button type="button" id="btn-save-client-id" class="btn btn-sm">Save Client ID</button>
-            <button type="button" id="btn-drive-signin" class="btn btn-sm btn-primary">Sign in to Google</button>
-            <button type="button" id="btn-drive-signout" class="btn btn-sm">Sign out</button>
+            <button type="button" id="btn-drive-signin" class="btn btn-sm btn-primary">Developer / Google Sign in</button>
+            <button type="button" id="btn-drive-signout" class="btn btn-sm" disabled>Sign out</button>
           </div>
-          <p id="set-drive-status" class="muted" style="margin:0;"></p>
+          <p id="set-drive-status" class="muted" style="margin:0;">Not signed in.</p>
           <div class="row-gap">
             <button type="button" id="btn-sync-all" class="btn btn-primary btn-sm">Sync pending records</button>
             <button type="button" id="btn-restore-drive" class="btn btn-sm">Restore from Drive</button>

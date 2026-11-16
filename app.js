@@ -112,8 +112,8 @@ async function init() {
 
   state.settings = await getAllSettings();
   state.deviceId = await getOrCreateDeviceId();
-  const savedClientId = await getSetting('googleOAuthClientId', '');
-  state.clientId = savedClientId || APP_CONFIG.googleOAuthClientId;
+  state.clientId = APP_CONFIG.googleOAuthClientId;
+  state.profile = await getSetting('contributorProfile', { ageRange: '', sex: '' });
 
   state.mainMap = new MainMapController('main-map', {
     onSelectMachine: (id) => openDetailScreen(id)
@@ -152,8 +152,24 @@ async function refreshDataAndHome() {
 
   $('home-total-count').textContent = `${state.machines.length} machine(s) saved`;
   const auth = getAuthState();
-  $('home-drive-status').textContent = auth.signedIn ? 'Drive: Signed in' : 'Drive: Not signed in';
-  $('btn-home-signin').style.display = auth.signedIn ? 'none' : 'inline-flex';
+  const isDev = auth.signedIn && auth.role === 'developer';
+  const hasCommProfile = Boolean(state.profile?.ageRange && state.profile?.sex);
+
+  $('home-signin-card').style.display = auth.signedIn ? 'none' : 'block';
+  $('community-profile-card').style.display = (auth.signedIn && !isDev && !hasCommProfile) ? 'block' : 'none';
+
+  const canCapture = auth.signedIn && (isDev || hasCommProfile);
+  $('btn-start-capture').disabled = !canCapture;
+  if (!auth.signedIn) {
+    $('home-capture-hint').textContent = 'Sign in with Google above to unlock capture.';
+    $('home-drive-status').textContent = 'Drive: Not signed in';
+  } else if (!isDev && !hasCommProfile) {
+    $('home-capture-hint').textContent = 'Please save your Age range and Sex above to unlock capture.';
+    $('home-drive-status').textContent = `Signed in as ${auth.email || 'Community'} (Community)`;
+  } else {
+    $('home-capture-hint').textContent = 'Survey one machine at a time from outside only. Photos and drafts save locally as you go.';
+    $('home-drive-status').textContent = `Signed in as ${auth.email || 'Google user'} (${isDev ? 'Developer' : 'Community'})`;
+  }
 }
 
 function bindEvents() {
@@ -276,13 +292,24 @@ function bindEvents() {
     await openDetailScreen(state.detailMachineId);
   });
 
-  // Settings screen
-  $('btn-save-client-id').addEventListener('click', async () => {
-    const val = $('set-client-id').value.trim();
-    state.clientId = val;
-    await setSetting('googleOAuthClientId', val);
-    $('set-drive-status').textContent = val ? 'Client ID saved locally.' : 'Client ID cleared.';
+  // Community profile selects & save
+  $('prof-age').innerHTML = '<option value="">Select age range...</option>' +
+    APP_CONFIG.ageRanges.map((a) => `<option value="${a}">${a}</option>`).join('');
+  $('prof-sex').innerHTML = '<option value="">Select sex...</option>' +
+    APP_CONFIG.sexOptions.map((s) => `<option value="${s}">${s}</option>`).join('');
+  $('btn-save-profile').addEventListener('click', async () => {
+    const ageRange = $('prof-age').value;
+    const sex = $('prof-sex').value;
+    if (!ageRange || !sex) {
+      alert('Please select both Age range and Sex.');
+      return;
+    }
+    state.profile = { ageRange, sex };
+    await setSetting('contributorProfile', state.profile);
+    await refreshDataAndHome();
   });
+
+  // Settings screen
   $('btn-drive-signin').addEventListener('click', handleSignIn);
   $('btn-drive-signout').addEventListener('click', () => {
     signOutDrive();
@@ -335,8 +362,11 @@ async function startNewCapture() {
     serialLabel,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    contributorId: state.deviceId,
-    contributorRole: state.settings.developerMode ? 'developer' : 'contributor',
+    contributorId: getAuthState().email || state.deviceId,
+    contributorEmail: getAuthState().email || '',
+    contributorRole: getAuthState().role || 'community',
+    contributorAgeRange: getAuthState().role === 'developer' ? '' : (state.profile?.ageRange || ''),
+    contributorSex: getAuthState().role === 'developer' ? '' : (state.profile?.sex || ''),
     measuredGps: null,
     gpsHistory: [],
     confirmedPosition: null,
@@ -1053,6 +1083,10 @@ async function openDetailScreen(id) {
 async function handleSignIn() {
   try {
     await requestDriveToken(state.clientId, { prompt: 'consent' });
+    const auth = getAuthState();
+    if (auth.role === 'developer') {
+      state.settings = await saveAppSettings({ developerMode: true });
+    }
     await refreshDataAndHome();
     await renderSettingsScreen();
     await autoSyncPending();
@@ -1120,11 +1154,12 @@ async function handleRestoreFromDrive() {
 }
 
 async function renderSettingsScreen() {
-  $('set-client-id').value = state.clientId || '';
   const auth = getAuthState();
   $('set-drive-status').textContent = auth.signedIn
-    ? 'Signed in to Google Drive (drive.file scope).'
+    ? `Signed in as ${auth.email || 'Google user'} (${auth.role === 'developer' ? 'Developer' : 'Community'})`
     : 'Not signed in.';
+  $('btn-drive-signin').disabled = auth.signedIn;
+  $('btn-drive-signout').disabled = !auth.signedIn;
 
   $('set-max-side').value = state.settings.photoMaxSide;
   $('set-quality').value = state.settings.photoQuality;

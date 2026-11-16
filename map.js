@@ -102,16 +102,16 @@ export class MainMapController {
       if (!coords) continue;
       bounds.push([coords.lat, coords.lng]);
 
-      // Small solid black circle by default; subtle ring for Broken/Gone
-      let color = '#111827';
-      let fillColor = '#111827';
+      // Solid black for developer pins; lighter blue-grey for community pins
+      const isDevPin = m.contributorRole !== 'community';
+      let color = isDevPin ? '#111827' : '#475569';
+      let fillColor = isDevPin ? '#111827' : '#64748b';
       let fillOpacity = 0.95;
       if (m.status === 'Broken') {
         color = '#b91c1c';
-        fillColor = '#111827';
       } else if (m.status === 'Gone') {
         color = '#6b7280';
-        fillColor = '#4b5563';
+        fillColor = '#94a3b8';
         fillOpacity = 0.7;
       }
 

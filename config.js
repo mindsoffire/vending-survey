@@ -7,9 +7,20 @@ export const APP_CONFIG = {
 
   // Paste your Google Cloud OAuth 2.0 Web Client ID here (or set it in Settings).
   // Never put a client secret in frontend code.
-  googleOAuthClientId: '',
-  driveScope: 'https://www.googleapis.com/auth/drive.file',
+  googleOAuthClientId: '728765924759-blkp0ul3immq0bippl9enqtcvg2kuhea.apps.googleusercontent.com',
+  driveScope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email',
   driveRootFolderName: 'Vending Survey',
+
+  // Trusted developer emails (pins appear solid black; no age/sex prompt)
+  developerEmails: [
+    'mindsoffire@gmail.com',
+    'taylorf.joy@gmail.com',
+    'muse.vanya@gmail.com'
+  ],
+
+  // Community contributor profile options (18+, 5 brackets)
+  ageRanges: ['18–24', '25–34', '35–44', '45–54', '55+'],
+  sexOptions: ['Female', 'Male', 'Prefer not to say'],
 
   // Singapore map defaults
   mapCenter: [1.3521, 103.8198],

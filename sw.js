@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vending-survey-shell-v2';
+const CACHE_NAME = 'vending-survey-shell-v4';
 
 const APP_SHELL_URLS = [
   './',

@@ -4,12 +4,16 @@ import { getPhotoBlob, saveMachine, savePhotoBlob } from './db.js';
 let tokenClient = null;
 let currentAccessToken = null;
 let tokenExpiresAt = 0;
+let currentUserEmail = '';
+let currentUserRole = 'community';
 
 export function getAuthState() {
   const valid = Boolean(currentAccessToken && Date.now() < tokenExpiresAt - 30_000);
   return {
     signedIn: valid,
-    expiresAt: tokenExpiresAt
+    expiresAt: tokenExpiresAt,
+    email: valid ? currentUserEmail : '',
+    role: valid ? currentUserRole : 'community'
   };
 }
 
@@ -21,6 +25,8 @@ export function signOutDrive() {
   }
   currentAccessToken = null;
   tokenExpiresAt = 0;
+  currentUserEmail = '';
+  currentUserRole = 'community';
 }
 
 export function requestDriveToken(clientId, { prompt = '' } = {}) {
@@ -38,13 +44,24 @@ export function requestDriveToken(clientId, { prompt = '' } = {}) {
     tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: effectiveId,
       scope: APP_CONFIG.driveScope,
-      callback: (resp) => {
+      callback: async (resp) => {
         if (resp.error) {
           reject(new Error(resp.error_description || resp.error));
           return;
         }
         currentAccessToken = resp.access_token;
         tokenExpiresAt = Date.now() + Number(resp.expires_in || 3600) * 1000;
+        try {
+          const uRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${currentAccessToken}` }
+          });
+          if (uRes.ok) {
+            const u = await uRes.json();
+            currentUserEmail = (u.email || '').trim().toLowerCase();
+            const devList = (APP_CONFIG.developerEmails || []).map((e) => e.toLowerCase());
+            currentUserRole = devList.includes(currentUserEmail) ? 'developer' : 'community';
+          }
+        } catch (_) {}
         resolve(currentAccessToken);
       },
       error_callback: (err) => {

@@ -159,7 +159,10 @@ html, body {
 }
 
 .btn:disabled {
-  opacity: 0.55;
+  background: #e5e7eb;
+  color: #9ca3af;
+  border-color: #d1d5db;
+  opacity: 1;
   cursor: not-allowed;
 }
 
