@@ -202,12 +202,11 @@ function bindEvents() {
     btn.addEventListener('click', () => {
       const target = btn.dataset.nav;
       showScreen(target);
+      if (target !== 'map') stopMapLiveGps();
       if (target === 'map') {
         state.mainMap.init(state.settings.basemap);
         renderMapWithFilters();
         renderListTable();
-      } else {
-        stopMapLiveGps();
       } else if (target === 'settings') {
         renderSettingsScreen();
       } else if (target === 'home') {
