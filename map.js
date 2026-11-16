@@ -11,6 +11,35 @@ export function haversineMetres(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+export function clampToRadiusMetres(centerLat, centerLng, targetLat, targetLng, maxMetres = 8) {
+  const dist = haversineMetres(centerLat, centerLng, targetLat, targetLng);
+  if (dist <= maxMetres || dist === 0) {
+    return { lat: targetLat, lng: targetLng, clamped: false, distanceM: dist };
+  }
+  const ratio = maxMetres / dist;
+  return {
+    lat: centerLat + (targetLat - centerLat) * ratio,
+    lng: centerLng + (targetLng - centerLng) * ratio,
+    clamped: true,
+    distanceM: dist
+  };
+}
+
+export function machineMatchesSearch(machine, query) {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [
+    machine.serialLabel,
+    machine.name,
+    machine.building,
+    machine.floor,
+    machine.status,
+    machine.note,
+    ...(machine.tags || [])
+  ].join(' ').toLowerCase();
+  return haystack.includes(q);
+}
+
 export function getDisplayCoords(machine) {
   if (machine?.confirmedPosition && Number.isFinite(machine.confirmedPosition.lat) && Number.isFinite(machine.confirmedPosition.lng)) {
     return {
@@ -92,14 +121,18 @@ export class MainMapController {
     this.baseLayer = createBaseLayer(basemap).addTo(this.map);
   }
 
-  renderMachines(machines) {
+  renderMachines(machines, { authState = null, searchQuery = '', userRadius = null } = {}) {
     if (!this.map || !this.markersLayer) return;
     this.markersLayer.clearLayers();
 
     const bounds = [];
     for (const m of machines) {
+      if (!machineMatchesSearch(m, searchQuery)) continue;
       const coords = getDisplayCoords(m);
       if (!coords) continue;
+      if (userRadius && haversineMetres(userRadius.lat, userRadius.lng, coords.lat, coords.lng) > userRadius.radiusM) {
+        continue;
+      }
       bounds.push([coords.lat, coords.lng]);
 
       // Solid black for developer pins; lighter blue-grey for community pins
@@ -136,7 +169,9 @@ export class MainMapController {
           <div class="map-popup-meta">${escapeHtml(m.serialLabel)} · ${status}</div>
           <div class="map-popup-meta">${building}${m.floor ? `, ${floor}` : ''}</div>
           ${(m.tags && m.tags.length) ? `<div class="map-popup-meta">Tags: ${escapeHtml(m.tags.join(', '))}</div>` : ''}
-          <button type="button" class="btn btn-sm btn-primary map-popup-btn" data-machine-id="${escapeHtml(m.id)}">Open record</button>
+          ${(authState?.signedIn && (authState.role === 'developer' || (m.contributorEmail && m.contributorEmail === authState.email)))
+            ? `<button type="button" class="btn btn-sm btn-primary map-popup-btn" data-machine-id="${escapeHtml(m.id)}">Open record</button>`
+            : ''}
         </div>
       `;
 
@@ -166,17 +201,20 @@ export class MainMapController {
     }
   }
 
-  showUserRadius(lat, lng, radiusMetres) {
+  showUserRadius(lat, lng, radiusMetres, { fit = true } = {}) {
     if (!this.map || !this.radiusLayer) return;
     this.radiusLayer.clearLayers();
 
-    const circle = L.circle([lat, lng], {
-      radius: radiusMetres,
-      color: '#2563eb',
-      fillColor: '#60a5fa',
-      fillOpacity: 0.14,
-      weight: 2
-    }).addTo(this.radiusLayer);
+    let circle = null;
+    if (radiusMetres > 0) {
+      circle = L.circle([lat, lng], {
+        radius: radiusMetres,
+        color: '#2563eb',
+        fillColor: '#60a5fa',
+        fillOpacity: 0.14,
+        weight: 2
+      }).addTo(this.radiusLayer);
+    }
 
     const userIcon = L.divIcon({
       className: 'user-pos-icon',
@@ -186,7 +224,9 @@ export class MainMapController {
     });
     L.marker([lat, lng], { icon: userIcon, interactive: false }).addTo(this.radiusLayer);
 
-    this.map.fitBounds(circle.getBounds(), { padding: [20, 20] });
+    if (fit && circle) {
+      this.map.fitBounds(circle.getBounds(), { padding: [20, 20] });
+    }
   }
 
   clearUserRadius() {
@@ -200,8 +240,11 @@ export class NudgeMapController {
     this.onNudge = onNudge;
     this.map = null;
     this.accuracyCircle = null;
+    this.nudgeLimitCircle = null;
     this.measuredMarker = null;
     this.confirmedMarker = null;
+    this.refLayer = null;
+    this._currentOpts = {};
   }
 
   destroy() {
@@ -210,12 +253,31 @@ export class NudgeMapController {
       this.map = null;
     }
     this.accuracyCircle = null;
+    this.nudgeLimitCircle = null;
     this.measuredMarker = null;
     this.confirmedMarker = null;
+    this.refLayer = null;
   }
 
-  render({ measuredGps, confirmedPosition, basemap = 'osm', editable = true }) {
+  _applyNudge(lat, lng) {
+    const { measuredGps, isDeveloper = true } = this._currentOpts;
+    let finalLat = lat;
+    let finalLng = lng;
+    let clamped = false;
+    if (!isDeveloper && measuredGps && Number.isFinite(measuredGps.lat)) {
+      const res = clampToRadiusMetres(measuredGps.lat, measuredGps.lng, lat, lng, 8);
+      finalLat = res.lat;
+      finalLng = res.lng;
+      clamped = res.clamped;
+    }
+    this.placeConfirmedPin(finalLat, finalLng, true);
+    this.onNudge(finalLat, finalLng, clamped);
+  }
+
+  render({ measuredGps, confirmedPosition, basemap = 'osm', editable = true, isDeveloper = true, otherMachines = [] }) {
     if (typeof window.L === 'undefined') return;
+    this._currentOpts = { measuredGps, confirmedPosition, basemap, editable, isDeveloper };
+
     const center = confirmedPosition
       ? [confirmedPosition.lat, confirmedPosition.lng]
       : measuredGps
@@ -225,33 +287,58 @@ export class NudgeMapController {
     if (!this.map) {
       this.map = L.map(this.containerId, {
         center,
-        zoom: measuredGps || confirmedPosition ? 18 : 12,
+        zoom: measuredGps || confirmedPosition ? 19 : 12,
         zoomControl: true
       });
       createBaseLayer(basemap).addTo(this.map);
+      this.refLayer = L.layerGroup().addTo(this.map);
 
       if (editable) {
-        this.map.on('click', (e) => {
-          this.placeConfirmedPin(e.latlng.lat, e.latlng.lng);
-          this.onNudge(e.latlng.lat, e.latlng.lng);
-        });
+        this.map.on('click', (e) => this._applyNudge(e.latlng.lat, e.latlng.lng));
       }
     } else {
-      this.map.setView(center, measuredGps || confirmedPosition ? 18 : 12);
+      this.map.setView(center, measuredGps || confirmedPosition ? 19 : 12);
     }
 
     if (this.accuracyCircle) this.map.removeLayer(this.accuracyCircle);
+    if (this.nudgeLimitCircle) this.map.removeLayer(this.nudgeLimitCircle);
     if (this.measuredMarker) this.map.removeLayer(this.measuredMarker);
     if (this.confirmedMarker) this.map.removeLayer(this.confirmedMarker);
+    if (this.refLayer) this.refLayer.clearLayers();
+
+    // Reference dots for nearby existing machines so side-by-side placement is easy
+    for (const om of otherMachines) {
+      const oc = getDisplayCoords(om);
+      if (!oc) continue;
+      const isDev = om.contributorRole !== 'community';
+      const refDot = L.circleMarker([oc.lat, oc.lng], {
+        radius: 5,
+        color: isDev ? '#111827' : '#475569',
+        fillColor: isDev ? '#111827' : '#64748b',
+        fillOpacity: 0.6,
+        weight: 1
+      });
+      refDot.bindTooltip(escapeHtml(om.name || om.serialLabel), { permanent: false, direction: 'top' });
+      refDot.addTo(this.refLayer);
+    }
 
     if (measuredGps && Number.isFinite(measuredGps.lat)) {
       this.accuracyCircle = L.circle([measuredGps.lat, measuredGps.lng], {
         radius: Math.max(3, measuredGps.accuracyM || 15),
         color: '#457b9d',
         fillColor: '#a8dadc',
-        fillOpacity: 0.25,
-        weight: 1.5,
+        fillOpacity: 0.18,
+        weight: 1,
         dashArray: '4 4'
+      }).addTo(this.map);
+
+      // 8m guide ring
+      this.nudgeLimitCircle = L.circle([measuredGps.lat, measuredGps.lng], {
+        radius: 8,
+        color: '#2d6a4f',
+        fillOpacity: 0,
+        weight: 1.5,
+        dashArray: '3 3'
       }).addTo(this.map);
 
       this.measuredMarker = L.circleMarker([measuredGps.lat, measuredGps.lng], {
@@ -291,7 +378,7 @@ export class NudgeMapController {
     if (editable) {
       this.confirmedMarker.on('dragend', () => {
         const pos = this.confirmedMarker.getLatLng();
-        this.onNudge(pos.lat, pos.lng);
+        this._applyNudge(pos.lat, pos.lng);
       });
     }
   }

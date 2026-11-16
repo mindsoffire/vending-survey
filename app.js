@@ -51,7 +51,11 @@ const state = {
   listSort: { field: 'createdAt', dir: 'desc' },
   retakeTarget: null, // { machineId, photoId, isReview }
   cropContext: null,  // { machineId, photoId, isReview, img, rect }
-  isSyncing: false
+  isSyncing: false,
+  mapSearchQuery: '',
+  activeRadiusM: 0,
+  userCoords: null,
+  liveGpsWatchId: null
 };
 
 const $ = (id) => document.getElementById(id);
@@ -189,8 +193,10 @@ function bindEvents() {
       showScreen(target);
       if (target === 'map') {
         state.mainMap.init(state.settings.basemap);
-        state.mainMap.renderMachines(state.machines);
+        renderMapWithFilters();
         renderListTable();
+      } else {
+        stopMapLiveGps();
       } else if (target === 'settings') {
         renderSettingsScreen();
       } else if (target === 'home') {
@@ -245,7 +251,7 @@ function bindEvents() {
     $('btn-view-map').classList.add('btn-primary');
     $('btn-view-list').classList.remove('btn-primary');
     state.mainMap.init(state.settings.basemap);
-    state.mainMap.renderMachines(state.machines);
+    renderMapWithFilters();
   });
   $('btn-view-list').addEventListener('click', () => {
     $('map-panel').style.display = 'none';
@@ -264,11 +270,32 @@ function bindEvents() {
       triggerSingleShotRadius(radiusM, btn);
     });
   });
+  $('map-search-input').addEventListener('input', (e) => {
+    state.mapSearchQuery = e.target.value;
+    renderMapWithFilters();
+    renderListTable();
+  });
+
+  $('btn-live-gps').addEventListener('click', () => {
+    if (state.liveGpsWatchId !== null) {
+      stopMapLiveGps();
+    } else {
+      startMapLiveGps();
+    }
+  });
+
   $('btn-clear-radius').addEventListener('click', () => {
-    state.mainMap.clearUserRadius();
+    state.activeRadiusM = 0;
+    if (state.liveGpsWatchId === null) {
+      state.mainMap.clearUserRadius();
+      state.userCoords = null;
+    } else if (state.userCoords) {
+      state.mainMap.showUserRadius(state.userCoords.lat, state.userCoords.lng, 0, { fit: false });
+    }
     document.querySelectorAll('.radius-btn').forEach((b) => b.classList.remove('active'));
     $('btn-clear-radius').style.display = 'none';
-    $('map-gps-status').style.display = 'none';
+    if (state.liveGpsWatchId === null) $('map-gps-status').style.display = 'none';
+    renderMapWithFilters();
   });
   $('basemap-select').addEventListener('change', async (e) => {
     state.settings = await saveAppSettings({ basemap: e.target.value });
@@ -292,7 +319,7 @@ function bindEvents() {
   $('btn-detail-back').addEventListener('click', () => {
     showScreen('map');
     state.mainMap.init(state.settings.basemap);
-    state.mainMap.renderMachines(state.machines);
+    renderMapWithFilters();
   });
   $('btn-det-retry').addEventListener('click', async () => {
     if (!state.detailMachineId) return;
@@ -498,7 +525,10 @@ function renderCaptureRoleButtons(selectedRole = 'Front') {
     btn.className = `role-btn ${role === selectedRole ? 'selected' : ''}`;
     btn.textContent = role;
     btn.addEventListener('click', () => {
-      if (state.pendingPhoto) state.pendingPhoto.role = role;
+      if (state.pendingPhoto) {
+        state.pendingPhoto.role = role;
+        renderCaptureTagChips(state.pendingPhoto.tags);
+      }
       wrap.querySelectorAll('.role-btn').forEach((b) => b.classList.remove('selected'));
       btn.classList.add('selected');
     });
@@ -509,7 +539,11 @@ function renderCaptureRoleButtons(selectedRole = 'Front') {
 function renderCaptureTagChips(selectedTags) {
   const wrap = $('cap-tag-chips');
   wrap.innerHTML = '';
-  const all = [...new Set([...APP_CONFIG.presetTags, ...selectedTags])];
+  const isPayment = (state.pendingPhoto?.role || '').startsWith('Payment');
+  const baseTags = isPayment
+    ? [...APP_CONFIG.paymentTags, ...APP_CONFIG.presetTags]
+    : APP_CONFIG.presetTags;
+  const all = [...new Set([...baseTags, ...selectedTags])];
   for (const tag of all) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -678,9 +712,10 @@ async function openReviewScreen() {
   await renderReviewPhotos();
   showScreen('review');
 
+  const isDev = getAuthState().role === 'developer';
   if (!state.reviewNudgeMap) {
     state.reviewNudgeMap = new NudgeMapController('nudge-map', {
-      onNudge: async (lat, lng) => {
+      onNudge: async (lat, lng, clamped) => {
         if (!state.activeCapture) return;
         state.activeCapture.confirmedPosition = {
           lat,
@@ -689,7 +724,8 @@ async function openReviewScreen() {
           timestamp: new Date().toISOString()
         };
         await saveMachine(state.activeCapture);
-        $('rev-pin-status').textContent = `Confirmed pin: ${lat.toFixed(6)}, ${lng.toFixed(6)} (nudged on map)`;
+        $('rev-pin-status').textContent =
+          `Confirmed pin: ${lat.toFixed(6)}, ${lng.toFixed(6)}${clamped ? ' (clamped to 8 m limit)' : ''}`;
       }
     });
   }
@@ -697,7 +733,9 @@ async function openReviewScreen() {
     measuredGps: m.measuredGps,
     confirmedPosition: m.confirmedPosition,
     basemap: state.settings.basemap,
-    editable: true
+    editable: true,
+    isDeveloper: isDev,
+    otherMachines: state.machines.filter((x) => x.id !== m.id)
   });
 }
 
@@ -989,6 +1027,13 @@ function renderListTable() {
 async function openDetailScreen(id) {
   const m = await getMachine(id);
   if (!m) return;
+  const auth = getAuthState();
+  const isOwner = Boolean(auth.signedIn && m.contributorEmail && m.contributorEmail === auth.email);
+  const canEdit = Boolean(auth.signedIn && (auth.role === 'developer' || isOwner));
+  if (!canEdit) {
+    alert('Sign in as the owner or a Developer to open and edit this record.');
+    return;
+  }
   state.detailMachineId = id;
   showScreen('detail');
 
@@ -1002,18 +1047,28 @@ async function openDetailScreen(id) {
   badge.className = 'badge ' + (m.backupState === 'verified' ? 'badge-ok' : m.backupState === 'failed' ? 'badge-err' : 'badge-warn');
   badge.textContent = m.backupState === 'verified' ? 'Backed up & verified' : m.backupState === 'failed' ? `Failed: ${m.backupError || 'error'}` : 'Not backed up';
 
-  const dev = Boolean(state.settings.developerMode);
+  const isDevRole = auth.role === 'developer';
+  const dev = Boolean(state.settings.developerMode || isDevRole);
+  const allowNudge = dev || isOwner;
   $('det-dev-notice').style.display = dev ? 'block' : 'none';
-  $('det-nudge-card').style.display = dev ? 'block' : 'none';
+  $('det-nudge-card').style.display = allowNudge ? 'block' : 'none';
 
-  if (dev) {
+  if (allowNudge) {
     if (!state.detailNudgeMap) {
       state.detailNudgeMap = new NudgeMapController('det-nudge-map', {
-        onNudge: async (lat, lng) => {
-          m.confirmedPosition = { lat, lng, method: 'nudged in developer mode', timestamp: new Date().toISOString() };
-          m.backupState = 'not_backed_up';
-          await saveMachine(m);
-          await openDetailScreen(m.id);
+        onNudge: async (lat, lng, clamped) => {
+          const current = await getMachine(state.detailMachineId);
+          if (!current) return;
+          current.confirmedPosition = {
+            lat,
+            lng,
+            method: getAuthState().role === 'developer' ? 'nudged in developer mode' : 'nudged by owner (8m max)',
+            timestamp: new Date().toISOString()
+          };
+          current.backupState = 'not_backed_up';
+          await saveMachine(current);
+          if (clamped) alert('Community nudges are limited to 8 m from the measured GPS fix.');
+          await openDetailScreen(current.id);
         }
       });
     }
@@ -1021,7 +1076,9 @@ async function openDetailScreen(id) {
       measuredGps: m.measuredGps,
       confirmedPosition: m.confirmedPosition,
       basemap: state.settings.basemap,
-      editable: true
+      editable: true,
+      isDeveloper: isDevRole,
+      otherMachines: state.machines.filter((x) => x.id !== m.id)
     });
   }
 
@@ -1285,10 +1342,63 @@ async function handleImportZip(e) {
 
 init();
 
+function renderMapWithFilters() {
+  const userRadius = (state.activeRadiusM > 0 && state.userCoords)
+    ? { lat: state.userCoords.lat, lng: state.userCoords.lng, radiusM: state.activeRadiusM }
+    : null;
+  state.mainMap.renderMachines(state.machines, {
+    authState: getAuthState(),
+    searchQuery: state.mapSearchQuery,
+    userRadius
+  });
+}
+
+function startMapLiveGps() {
+  const statusEl = $('map-gps-status');
+  const btn = $('btn-live-gps');
+  if (!navigator.geolocation) {
+    statusEl.textContent = 'Geolocation is not supported in this browser.';
+    statusEl.style.display = 'block';
+    return;
+  }
+  btn.textContent = 'Live GPS: On';
+  btn.classList.add('btn-live-on');
+  statusEl.textContent = 'Live GPS active...';
+  statusEl.style.display = 'block';
+
+  state.liveGpsWatchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      const { latitude, longitude, accuracy } = pos.coords;
+      state.userCoords = { lat: latitude, lng: longitude };
+      state.mainMap.init(state.settings.basemap);
+      state.mainMap.showUserRadius(latitude, longitude, state.activeRadiusM, { fit: false });
+      renderMapWithFilters();
+      statusEl.textContent = `Live GPS: ±${Math.round(accuracy)} m (pan/zoom freely)`;
+    },
+    (err) => {
+      statusEl.textContent = err.code === 1 ? 'Location permission denied.' : 'Live GPS waiting for signal...';
+    },
+    { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+  );
+}
+
+function stopMapLiveGps() {
+  if (state.liveGpsWatchId !== null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(state.liveGpsWatchId);
+    state.liveGpsWatchId = null;
+  }
+  const btn = $('btn-live-gps');
+  if (btn) {
+    btn.textContent = 'Live GPS: Off';
+    btn.classList.remove('btn-live-on');
+  }
+}
+
 function triggerSingleShotRadius(radiusMetres, activeBtn) {
   const statusEl = $('map-gps-status');
   document.querySelectorAll('.radius-btn').forEach((b) => b.classList.remove('active'));
   activeBtn.classList.add('active');
+  state.activeRadiusM = radiusMetres;
 
   if (!navigator.geolocation) {
     statusEl.textContent = 'Geolocation is not supported in this browser.';
@@ -1302,11 +1412,13 @@ function triggerSingleShotRadius(radiusMetres, activeBtn) {
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       const { latitude, longitude, accuracy } = pos.coords;
+      state.userCoords = { lat: latitude, lng: longitude };
       state.mainMap.init(state.settings.basemap);
-      state.mainMap.showUserRadius(latitude, longitude, radiusMetres);
+      state.mainMap.showUserRadius(latitude, longitude, radiusMetres, { fit: true });
+      renderMapWithFilters();
       $('btn-clear-radius').style.display = 'inline-flex';
       const label = radiusMetres >= 1000 ? `${radiusMetres / 1000} km` : `${radiusMetres} m`;
-      statusEl.textContent = `Showing ${label} radius around you (±${Math.round(accuracy)} m). GPS stopped.`;
+      statusEl.textContent = `Showing ${label} radius around you (±${Math.round(accuracy)} m).${state.liveGpsWatchId === null ? ' GPS stopped.' : ''}`;
     },
     (err) => {
       let msg = 'Could not get location.';

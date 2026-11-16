@@ -54,6 +54,9 @@ export const APP_CONFIG = {
     'Contact'
   ],
 
+  // Payment preset tag chips (shown when Payment 1 or Payment 2 is selected)
+  paymentTags: ['cash', 'coins', 'NETS', 'PayNow', 'card', 'EZ-Link'],
+
   // Preset product tag chips
   presetTags: [
     'snacks',
@@ -86,6 +89,7 @@ export const APP_CONFIG = {
     'chocolate', 'chips', 'crisps', 'biscuits', 'cookies', 'nuts',
     'mask', 'tissue', 'sanitiser', 'sanitizer', 'umbrella', 'charger',
     'cable', 'powerbank', 'medicine', 'personal care', 'toiletry',
-    'halal', 'vegetarian', 'vegan', 'protein', 'energy', 'flowers', 'toys'
+    'halal', 'vegetarian', 'vegan', 'protein', 'energy', 'flowers', 'toys',
+    'cash', 'coins', 'nets', 'paynow', 'card', 'credit', 'ez-link', 'contactless', 'apple pay', 'google pay'
   ]
 };

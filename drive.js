@@ -7,6 +7,28 @@ let tokenExpiresAt = 0;
 let currentUserEmail = '';
 let currentUserRole = 'community';
 
+const SESSION_KEY = 'vs_auth_session';
+try {
+  const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
+  if (saved && saved.token && Date.now() < saved.expiresAt - 30_000) {
+    currentAccessToken = saved.token;
+    tokenExpiresAt = saved.expiresAt;
+    currentUserEmail = saved.email || '';
+    currentUserRole = saved.role || 'community';
+  }
+} catch (_) {}
+
+function saveSession() {
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+      token: currentAccessToken,
+      expiresAt: tokenExpiresAt,
+      email: currentUserEmail,
+      role: currentUserRole
+    }));
+  } catch (_) {}
+}
+
 export function getAuthState() {
   const valid = Boolean(currentAccessToken && Date.now() < tokenExpiresAt - 30_000);
   return {
@@ -27,6 +49,7 @@ export function signOutDrive() {
   tokenExpiresAt = 0;
   currentUserEmail = '';
   currentUserRole = 'community';
+  try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {}
 }
 
 export function requestDriveToken(clientId, { prompt = '' } = {}) {
@@ -62,6 +85,7 @@ export function requestDriveToken(clientId, { prompt = '' } = {}) {
             currentUserRole = devList.includes(currentUserEmail) ? 'developer' : 'community';
           }
         } catch (_) {}
+        saveSession();
         resolve(currentAccessToken);
       },
       error_callback: (err) => {

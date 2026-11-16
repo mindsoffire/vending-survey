@@ -30,6 +30,7 @@
 }
 
 html, body {
+  overscroll-behavior-y: contain;
   margin: 0;
   padding: 0;
   background: var(--bg);
@@ -552,4 +553,10 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.btn-live-on {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-color: #93c5fd;
 }
